@@ -1,554 +1,419 @@
 import streamlit as st
-from streamlit.components.v1 import html
 import os
+import json
+from pathlib import Path
 from email_generator import init_llm, generate_email_enhanced
 
-# Page configuration
+# ── Page config ───────────────────────────────
 st.set_page_config(
-    page_title="Professional Email Writer",
+    page_title="MailCraft — AI Email Writer",
     page_icon="✉️",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="centered",
+    initial_sidebar_state="collapsed",
 )
 
-# Custom CSS for professional styling
+# ── Credentials file (saved next to app.py) ───
+CONFIG_FILE = Path(__file__).parent / ".mailcraft_config.json"
+
+def load_config():
+    """Load saved credentials from disk."""
+    if CONFIG_FILE.exists():
+        try:
+            return json.loads(CONFIG_FILE.read_text())
+        except Exception:
+            return {}
+    return {}
+
+def save_config(data: dict):
+    """Persist credentials to disk."""
+    CONFIG_FILE.write_text(json.dumps(data, indent=2))
+
+cfg = load_config()
+
+# ── CSS ───────────────────────────────────────
 st.markdown("""
 <style>
-    /* Main container styling */
-    .main {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
-    }
-    
-    /* Card styling */
-    .stApp {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-    
-    /* Content box styling */
-    .content-box {
-        background: white;
-        padding: 2rem;
-        border-radius: 15px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-        margin-bottom: 2rem;
-    }
-    
-    /* Header styling */
-    .header-text {
-        color: white;
-        text-align: center;
-        padding: 2rem 0;
-        font-size: 3rem;
-        font-weight: 700;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-    }
-    
-    .subheader-text {
-        color: white;
-        text-align: center;
-        font-size: 1.2rem;
-        margin-top: -1.5rem;
-        margin-bottom: 2rem;
-        opacity: 0.9;
-    }
-    
-    /* Button styling */
-    .stButton>button {
-        width: 100%;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        padding: 0.75rem 2rem;
-        font-size: 1.1rem;
-        font-weight: 600;
-        border-radius: 10px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-    }
-    
-    .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-    }
-    
-    /* Text area styling */
-    .stTextArea textarea {
-        border-radius: 10px;
-        border: 2px solid #e0e0e0;
-        padding: 1rem;
-        font-size: 1rem;
-        transition: all 0.3s ease;
-    }
-    
-    .stTextArea textarea:focus {
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    }
-    
-    /* Input styling */
-    .stTextInput input {
-        border-radius: 10px;
-        border: 2px solid #e0e0e0;
-        padding: 0.75rem;
-        transition: all 0.3s ease;
-    }
-    
-    .stTextInput input:focus {
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    }
-    
-    /* Select box styling */
-    .stSelectbox select {
-        border-radius: 10px;
-        border: 2px solid #e0e0e0;
-        padding: 0.75rem;
-        transition: all 0.3s ease;
-    }
-    
-    /* Success message styling */
-    .stSuccess {
-        background-color: #d4edda;
-        border-left: 5px solid #28a745;
-        padding: 1rem;
-        border-radius: 5px;
-    }
-    
-    /* Email output box */
-    .email-output {
-        background: #f8f9fa;
-        padding: 2rem;
-        border-radius: 10px;
-        border-left: 5px solid #667eea;
-        font-family: 'Courier New', monospace;
-        white-space: pre-wrap;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-    }
-    
-    /* Tone card styling */
-    .tone-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 10px;
-        border: 2px solid #e0e0e0;
-        margin: 0.5rem 0;
-        transition: all 0.3s ease;
-        cursor: pointer;
-    }
-    
-    .tone-card:hover {
-        border-color: #667eea;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
-    }
-    
-    /* Sidebar styling */
-    .css-1d391kg {
-        background: white;
-    }
-    
-    /* Info box styling */
-    .info-box {
-        background: #e7f3ff;
-        padding: 1rem;
-        border-radius: 10px;
-        border-left: 4px solid #2196F3;
-        margin: 1rem 0;
-    }
-    
-    /* Feature badge */
-    .feature-badge {
-        display: inline-block;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 0.3rem 0.8rem;
-        border-radius: 20px;
-        font-size: 0.85rem;
-        margin: 0.2rem;
-        font-weight: 600;
-    }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+    --bg:      #f5f7fa;
+    --white:   #ffffff;
+    --border:  #e2e6ed;
+    --muted:   #8a94a6;
+    --body:    #374151;
+    --heading: #111827;
+    --blue:    #3b82f6;
+    --blue-lt: #eff6ff;
+    --purple:  #7c3aed;
+    --green:   #059669;
+    --red:     #dc2626;
+    --r:       10px;
+    --shadow:  0 1px 4px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, .stApp {
+    background: var(--bg) !important;
+    font-family: 'Inter', sans-serif !important;
+    color: var(--body) !important;
+}
+
+#MainMenu, footer, header { visibility: hidden !important; }
+
+.block-container {
+    padding: 2.5rem 1.5rem 4rem !important;
+    max-width: 700px !important;
+}
+
+/* Labels */
+label, .stTextArea label, .stTextInput label, .stSelectbox label {
+    font-size: 0.73rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.07em !important;
+    text-transform: uppercase !important;
+    color: var(--muted) !important;
+}
+
+/* Inputs */
+.stTextArea textarea, .stTextInput input {
+    background: var(--white) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--r) !important;
+    color: var(--heading) !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.93rem !important;
+    box-shadow: none !important;
+}
+.stTextArea textarea:focus, .stTextInput input:focus {
+    border-color: var(--blue) !important;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.12) !important;
+    outline: none !important;
+}
+
+/* Selectbox */
+.stSelectbox [data-baseweb="select"] > div {
+    background: var(--white) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--r) !important;
+    color: var(--heading) !important;
+    box-shadow: none !important;
+}
+[data-baseweb="popover"] [role="listbox"] {
+    background: var(--white) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--r) !important;
+    box-shadow: var(--shadow) !important;
+}
+[data-baseweb="popover"] [role="option"] {
+    color: var(--body) !important;
+    font-size: 0.9rem !important;
+}
+[data-baseweb="popover"] [role="option"]:hover,
+[data-baseweb="popover"] [aria-selected="true"] {
+    background: var(--blue-lt) !important;
+    color: var(--blue) !important;
+}
+
+/* Primary button */
+.stButton > button {
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    border-radius: var(--r) !important;
+    border: none !important;
+    background: linear-gradient(135deg, var(--blue) 0%, var(--purple) 100%) !important;
+    color: #fff !important;
+    padding: 0.65rem 1.4rem !important;
+    box-shadow: 0 2px 10px rgba(59,130,246,0.25) !important;
+    transition: filter 0.15s ease, transform 0.15s ease !important;
+}
+.stButton > button:hover { filter: brightness(1.07) !important; transform: translateY(-1px) !important; }
+.stButton > button:active { transform: none !important; }
+
+/* Download button */
+.stDownloadButton > button {
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 500 !important;
+    font-size: 0.88rem !important;
+    border-radius: var(--r) !important;
+    background: var(--white) !important;
+    color: var(--body) !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: none !important;
+}
+.stDownloadButton > button:hover { border-color: var(--blue) !important; color: var(--blue) !important; }
+
+/* Alerts */
+div[data-testid="stNotification"], .stAlert {
+    animation: none !important;
+    transition: none !important;
+    border-radius: var(--r) !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.87rem !important;
+}
+
+/* Spinner */
+.stSpinner > div { border-top-color: var(--blue) !important; }
+
+/* Expander */
+.streamlit-expanderHeader {
+    background: var(--white) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--r) !important;
+    color: var(--body) !important;
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 600 !important;
+    font-size: 0.87rem !important;
+}
+.streamlit-expanderContent {
+    background: var(--white) !important;
+    border: 1px solid var(--border) !important;
+    border-top: none !important;
+    border-bottom-left-radius: var(--r) !important;
+    border-bottom-right-radius: var(--r) !important;
+    padding: 1rem !important;
+}
+
+/* Divider */
+hr { border: none !important; border-top: 1px solid var(--border) !important; margin: 1.4rem 0 !important; }
+
+/* Checkbox */
+.stCheckbox label { text-transform: none !important; letter-spacing: 0 !important; font-size: 0.83rem !important; color: var(--muted) !important; }
+
+/* Saved badge */
+.mc-saved {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    color: #059669;
+    border-radius: 999px;
+    padding: 0.2rem 0.7rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+/* Email output */
+.mc-out {
+    background: #fafbfc;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--blue);
+    border-radius: var(--r);
+    padding: 1.3rem 1.5rem;
+    font-size: 0.92rem;
+    line-height: 1.85;
+    color: var(--body);
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-bottom: 0.9rem;
+}
+
+/* Tip box */
+.mc-tip {
+    background: var(--blue-lt);
+    border: 1px solid #bfdbfe;
+    border-radius: var(--r);
+    padding: 0.7rem 1rem;
+    font-size: 0.81rem;
+    color: #374151;
+    line-height: 1.55;
+    margin-top: 0.8rem;
+}
+
+[data-testid="stSidebar"] {
+    background: var(--white) !important;
+    border-right: 1px solid var(--border) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state
-if 'generated_email' not in st.session_state:
-    st.session_state.generated_email = None
-if 'api_key_set' not in st.session_state:
-    st.session_state.api_key_set = False
+# ── Session state ─────────────────────────────
+if "email_out" not in st.session_state:
+    st.session_state.email_out = None
 
-# Tone options
-TONE_OPTIONS = {
-    "Professional": {
-        "icon": "💼",
-        "description": "Formal and business-appropriate",
-        "color": "#2c3e50"
-    },
-    "Friendly": {
-        "icon": "😊",
-        "description": "Warm and approachable while maintaining professionalism",
-        "color": "#3498db"
-    },
-    "Casual": {
-        "icon": "👋",
-        "description": "Relaxed and informal",
-        "color": "#1abc9c"
-    },
-    "Formal": {
-        "icon": "🎩",
-        "description": "Very formal and diplomatic",
-        "color": "#34495e"
-    },
-    "Urgent": {
-        "icon": "⚡",
-        "description": "Direct and time-sensitive",
-        "color": "#e74c3c"
-    },
-    "Apologetic": {
-        "icon": "🙏",
-        "description": "Expressing regret or making amends",
-        "color": "#9b59b6"
-    }
+TONES = {
+    "Professional": "💼", "Friendly": "😊", "Casual": "👋",
+    "Formal": "🎩", "Urgent": "⚡", "Apologetic": "🙏",
 }
 
-# Header
-st.markdown('<h1 class="header-text">✉️ Professional Email Writer</h1>', unsafe_allow_html=True)
-st.markdown('<p class="subheader-text">Transform your bullet points into polished, professional emails in seconds</p>', unsafe_allow_html=True)
+# ── Header ────────────────────────────────────
+st.markdown(
+    '<h1 style="font-family:Inter,sans-serif;font-size:1.9rem;font-weight:700;'
+    'color:#111827;letter-spacing:-0.02em;margin-bottom:0.1rem;">✉️ MailCraft</h1>'
+    '<p style="color:#8a94a6;margin-bottom:1rem;font-size:0.9rem;">'
+    'Turn bullet points into a polished email in seconds.</p>',
+    unsafe_allow_html=True,
+)
 
-# Sidebar for API Key and Settings
-with st.sidebar:
-    st.markdown("## ⚙️ Settings")
-    
-    # API Key input
-    api_key = st.text_input(
-        "OpenAI API Key",
-        type="password",
-        value=os.getenv("OPENAI_API_KEY", ""),
-        help="Enter your OpenAI API key to use the email generator"
+# ════════════════════════════════════════════
+# SETTINGS — saved credentials (collapsible)
+# ════════════════════════════════════════════
+creds_saved = bool(cfg.get("api_key"))
+expander_label = "⚙️ Settings  ✓ Credentials saved" if creds_saved else "⚙️ Settings — set up your credentials once"
+
+with st.expander(expander_label, expanded=not creds_saved):
+    st.markdown(
+        '<p style="font-size:0.82rem;color:#8a94a6;margin-bottom:0.8rem;">'
+        'Saved once on your machine — no need to re-enter every visit.</p>',
+        unsafe_allow_html=True,
     )
-    
-    if api_key:
-        st.session_state.api_key_set = True
-        st.success("✅ API Key configured!")
-    else:
-        st.warning("⚠️ Please enter your API key to continue")
-    
-    st.markdown("---")
-    
-    # Feature highlights
-    st.markdown("## ✨ Features")
-    st.markdown("""
-    <div class="feature-badge">6 Tone Options</div>
-    <div class="feature-badge">Personalization</div>
-    <div class="feature-badge">AI-Powered</div>
-    <div class="feature-badge">Instant Generation</div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # About section
-    st.markdown("## 📖 About")
-    st.markdown("""
-    This tool uses advanced AI to convert your brief notes into 
-    well-structured, professional emails. Simply enter your key 
-    points and let the AI handle the rest!
-    """)
 
-# Main content
-if st.session_state.api_key_set:
-    # Create two columns for better layout
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        st.markdown("### 📝 Email Details")
-        
-        # Email notes input
-        notes = st.text_area(
-            "Enter your email notes (bullet points)",
-            height=150,
-            placeholder="• Meeting scheduled for tomorrow at 2pm\n• Need project update\n• Deadline is Friday",
-            help="Enter the key points you want to include in your email"
+    e1, e2 = st.columns(2)
+    with e1:
+        inp_api = st.text_input(
+            "OpenAI API Key",
+            type="password",
+            value=cfg.get("api_key", ""),
+            placeholder="sk-...",
         )
-        
-        # Recipient name
-        recipient_name = st.text_input(
-            "Recipient's Name (Optional)",
-            placeholder="John Smith",
-            help="Enter the recipient's name for a personalized greeting"
-        )
-        
-        # Sender name
-        sender_name = st.text_input(
-            "Your Name (Optional)",
+        inp_from_name = st.text_input(
+            "Your name (sender)",
+            value=cfg.get("from_name", ""),
             placeholder="Jane Doe",
-            help="Enter your name for the email sign-off"
         )
-    
-    with col2:
-        st.markdown("### 🎨 Select Email Tone")
-        
-        # Tone selection with custom styling
-        tone_options = list(TONE_OPTIONS.keys())
-        
-        # Create a more visual tone selector
-        selected_tone = st.selectbox(
-            "Choose the tone for your email",
-            tone_options,
-            format_func=lambda x: f"{TONE_OPTIONS[x]['icon']} {x} - {TONE_OPTIONS[x]['description']}",
-            help="Select the appropriate tone for your email based on the context"
+        inp_provider = st.selectbox(
+            "Email provider",
+            ["auto", "gmail", "outlook", "yahoo"],
+            index=["auto", "gmail", "outlook", "yahoo"].index(cfg.get("provider", "auto")),
+            format_func=lambda x: {"auto": "🔄 Auto", "gmail": "Gmail",
+                                    "outlook": "Outlook", "yahoo": "Yahoo"}[x],
         )
-        
-        # Display tone info
-        st.markdown(f"""
-        <div class="info-box">
-            <strong>{TONE_OPTIONS[selected_tone]['icon']} {selected_tone} Tone</strong><br>
-            {TONE_OPTIONS[selected_tone]['description']}
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Generate button
-    st.markdown("---")
-    col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
-    
-    with col_btn2:
-        generate_button = st.button("🚀 Generate Professional Email", use_container_width=True)
-    
-    # Generate email
-    if generate_button:
-        if not notes.strip():
-            st.error("⚠️ Please enter some notes for your email!")
-        else:
-            with st.spinner("✨ Crafting your professional email..."):
-                # Initialize LLM
-                llm = init_llm(api_key)
-                
-                # Generate email
-                email = generate_email_enhanced(
-                    notes,
-                    selected_tone,
-                    recipient_name if recipient_name else None,
-                    sender_name if sender_name else None,
-                    llm
-                )
-                
-                st.session_state.generated_email = email
-    
-    # Display generated email
-    if st.session_state.generated_email:
-        st.markdown("---")
-        st.markdown("### 📧 Generated Email")
-        
-        # Email output with copy button
-        st.markdown(f"""
-        <div class="email-output">
-{st.session_state.generated_email}
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Action buttons
-        col_action1, col_action2, col_action3 = st.columns(3)
-        
-        with col_action1:
-            st.download_button(
-                label="📥 Download Email",
-                data=st.session_state.generated_email,
-                file_name="professional_email.txt",
-                mime="text/plain",
-                use_container_width=True
+    with e2:
+        inp_from_email = st.text_input(
+            "Your email (sender)",
+            value=cfg.get("from_email", ""),
+            placeholder="you@gmail.com",
+        )
+        inp_app_pw = st.text_input(
+            "App password",
+            type="password",
+            value=cfg.get("app_pw", ""),
+        )
+
+    st.markdown(
+        '<div class="mc-tip">'
+        '<strong>Gmail / Yahoo:</strong> use an App Password, not your login password. '
+        '<strong>Outlook:</strong> normal password works if SMTP is enabled.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("💾 Save credentials", use_container_width=True):
+        save_config({
+            "api_key":    inp_api.strip(),
+            "from_name":  inp_from_name.strip(),
+            "from_email": inp_from_email.strip(),
+            "app_pw":     inp_app_pw.strip(),
+            "provider":   inp_provider,
+        })
+        cfg = load_config()
+        st.success("Credentials saved! This expander will stay collapsed from now on.")
+        st.rerun()
+
+# ── Pull saved values for use below ───────────
+api_key    = cfg.get("api_key", "").strip()
+from_name  = cfg.get("from_name", "").strip()
+from_email = cfg.get("from_email", "").strip()
+app_pw     = cfg.get("app_pw", "").strip()
+provider   = cfg.get("provider", "auto")
+
+if not api_key:
+    st.warning("Open ⚙️ Settings above and save your OpenAI API key to get started.")
+    st.stop()
+
+st.markdown("---")
+
+# ════════════════════════════════════════════
+# COMPOSE — the only thing user does daily
+# ════════════════════════════════════════════
+notes = st.text_area(
+    "Your notes",
+    height=120,
+    placeholder="• Follow up on proposal sent Monday\n• Ask about budget approval\n• Suggest a quick call this week",
+)
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    tone = st.selectbox("Tone", list(TONES.keys()), format_func=lambda x: f"{TONES[x]} {x}")
+with col2:
+    to_name = st.text_input("Recipient name", placeholder="John Smith")
+with col3:
+    to_email = st.text_input("Recipient email", placeholder="john@company.com")
+
+if st.button("✨ Generate Email", use_container_width=True):
+    if not notes.strip():
+        st.error("Please add some notes first.")
+    else:
+        with st.spinner("Writing your email…"):
+            llm = init_llm(api_key)
+            st.session_state.email_out = generate_email_enhanced(
+                notes, tone, to_name or None, from_name or None, llm
             )
-        
-        with col_action2:
-            if st.button("📋 Copy to Clipboard", use_container_width=True):
-                st.code(st.session_state.generated_email, language=None)
-                st.success("✅ Email displayed above - copy from the code block!")
-        
-        with col_action3:
-            if st.button("🔄 Generate New", use_container_width=True):
-                st.session_state.generated_email = None
-                st.rerun()
 
-else:
-    # Show instructions when API key is not set
-    st.markdown("""
-    <div class="content-box">
-        <h2>👋 Welcome to Professional Email Writer!</h2>
-        <p>To get started, please enter your OpenAI API key in the sidebar.</p>
-        
-    <h3>🚀 How to use:</h3>
-        <ol>
-            <li>Enter your OpenAI API key in the sidebar</li>
-            <li>Write your email notes or bullet points</li>
-            <li>Select your preferred tone</li>
-            <li>Add recipient and sender names (optional)</li>
-            <li>Click "Generate Professional Email"</li>
-        </ol>
-        
-    <h3>💡 Tips for best results:</h3>
-        <ul>
-            <li>Be clear and specific with your bullet points</li>
-            <li>Include key information like dates, times, and action items</li>
-            <li>Choose the tone that matches your relationship with the recipient</li>
-            <li>Review and customize the generated email before sending</li>
-        </ul>
-    </div>
-    """, unsafe_allow_html=True)
+# ════════════════════════════════════════════
+# OUTPUT + ONE-CLICK SEND
+# ════════════════════════════════════════════
+if st.session_state.email_out:
+    st.markdown("---")
 
-# ============================================
-# CUSTOM CSS FOR HOVER EFFECTS
-# Injected via st.markdown with style tags
-# ============================================
-st.markdown("""
-<style>
-/* YouTube Button Hover Effects */
-.yt-subscribe-btn {
-    border-radius: 25px !important;
-    box-shadow: 0 4px 15px rgba(255,0,0,0.3) !important;
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
-    cursor: pointer !important;
-}
+    st.markdown(
+        f'<div class="mc-out">{st.session_state.email_out}</div>',
+        unsafe_allow_html=True,
+    )
 
-.yt-subscribe-btn:hover {
-    transform: scale(1.15) rotate(-2deg) !important;
-    box-shadow: 0 8px 30px rgba(255,0,0,0.6), 0 0 20px rgba(255,0,0,0.4) !important;
-    filter: brightness(1.2) !important;
-}
+    a1, a2, a3, _ = st.columns([1.4, 1.1, 1.1, 1])
+    with a1:
+        st.download_button(
+            "📥 Download",
+            data=st.session_state.email_out,
+            file_name="email.txt",
+            mime="text/plain",
+            use_container_width=True,
+        )
+    with a2:
+        # One-click send — credentials already saved
+        if st.button("🚀 Send", use_container_width=True):
+            if not to_email.strip():
+                st.error("Enter a recipient email above.")
+            elif not from_email or not app_pw:
+                st.error("Open ⚙️ Settings and save your sender email & app password first.")
+            else:
+                lines = st.session_state.email_out.strip().splitlines()
+                subj, body = "", []
+                for i, ln in enumerate(lines):
+                    if ln.lower().startswith("subject:"):
+                        subj, body = ln[8:].strip(), lines[i + 1:]
+                        break
+                if not subj and lines:
+                    subj, body = lines[0], lines[1:]
+                try:
+                    from email_sender import send_email as send
+                    send(
+                        generated_content={
+                            "subject": subj or "Email",
+                            "body": "\n".join(body).strip(),
+                        },
+                        recipient_email=to_email.strip(),
+                        sender_email=from_email,
+                        sender_password=app_pw,
+                        provider=provider,
+                    )
+                    st.success(f"Sent to {to_email} ✓")
+                except Exception as e:
+                    st.error(str(e))
+    with a3:
+        if st.button("🔄 Reset", use_container_width=True):
+            st.session_state.email_out = None
+            st.rerun()
 
-/* Social Links Hover Effects */
-.social-btn {
-    margin: 5px !important;
-    transition: all 0.3s ease !important;
-}
-
-.social-btn:hover {
-    transform: scale(1.1) !important;
-    filter: brightness(1.2) !important;
-}
-
-/* Instructor Card Hover */
-.instructor-card {
-    transform: scale(1);
-    transition: transform 0.3s ease;
-}
-
-.instructor-card:hover {
-    transform: scale(1.02);
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ============================================
-# MAIN FOOTER HTML
-# Using class-based CSS instead of inline JS
-# ============================================
-footer_html = """
-<div align="center">
-
-<!-- ============================================ -->
-<!-- ANIMATED GRADIENT WAVE HEADER -->
-<!-- ============================================ -->
-<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&height=120&section=footer&text=Thank%20You!&fontSize=50&fontAlignY=65&animation=twinkling" width="100%"/>
-
-<br>
-
-<!-- ============================================ -->
-<!-- GLASSMORPHISM CARD CONTAINER -->
-<!-- ============================================ -->
-<div style="
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(10px);
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 30px;
-  max-width: 600px;
-  margin: 20px auto;
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-">
-
-<!-- ============================================ -->
-<!-- ANIMATED TYPING BADGE -->
-<!-- ============================================ -->
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=22&duration=3000&pause=1000&color=00D9FF&center=true&vCenter=true&width=500&lines=Crafted+with+%E2%9D%A4%EF%B8%8F+by+Touseef+Afridi;Proud+Student+of+Codanics;Learning+from+the+Best!" alt="Typing SVG" />
-
-<br>
-
-<!-- ============================================ -->
-<!-- INSTRUCTOR SPOTLIGHT CARD -->
-<!-- ============================================ -->
-<div class="instructor-card" style="
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 15px;
-  padding: 20px;
-  margin: 15px 0;
-">
-  
-  <img src="https://img.shields.io/badge/👨‍🏫-Mentor-ff6b6b?style=for-the-badge&labelColor=black" />
-  
-  <h3 style="color: white; margin: 10px 0;">
-    <a href="https://www.youtube.com/c/Codanics" style="color: #ffd700; text-decoration: none; font-weight: bold;">
-      ✨ Dr. Ammar Tufail ✨
-    </a>
-  </h3>
-  
-<p style="color: #e0e0e0; font-size: 14px;">
-    Transforming students into AI Engineers at 
-    <a href="https://www.youtube.com/c/Codanics" target="_blank" style="color: #00d9ff; text-decoration: none;">
-      <strong>Codanics</strong>
-    </a>
-</p>
-  
-</div>
-
-<br>
-
-<!-- ============================================ -->
-<!-- SOCIAL LINKS WITH CSS HOVER -->
-<!-- ============================================ -->
-<p align="center">
-
-<!-- LinkedIn - ACTIVE -->
-<a href="https://www.linkedin.com/in/touseef-afridi-35a59a250/" target="_blank">
-  <img class="social-btn" src="https://img.shields.io/badge/🔗_LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white&labelColor=0d1117" height="35"/>
-</a>
-
-<!-- GitHub - ACTIVE -->
-<a href="https://github.com/tosif7727" target="_blank">
-  <img class="social-btn" src="https://img.shields.io/badge/🔗_GitHub-100000?style=for-the-badge&logo=github&logoColor=white&labelColor=0d1117" height="35"/>
-</a>
-
-<!-- Twitter - COMMENTED OUT -->
-<!-- <a href="your-twitter-url" target="_blank">
-  <img class="social-btn" src="https://img.shields.io/badge/🔗_Twitter-1DA1F2?style=for-the-badge&logo=twitter&logoColor=white&labelColor=0d1117" height="35"/>
-</a> -->
-
-<!-- Portfolio - COMMENTED OUT -->
-<!-- <a href="your-portfolio-url" target="_blank">
-  <img class="social-btn" src="https://img.shields.io/badge/🔗_Portfolio-FF6B6B?style=for-the-badge&logo=firefox&logoColor=white&labelColor=0d1117" height="35"/>
-</a> -->
-
-</p>
-
-<br>
-
-<!-- ============================================ -->
-<!-- YOUTUBE SUBSCRIBE BUTTON WITH CSS HOVER -->
-<!-- ============================================ -->
-<a href="https://www.youtube.com/c/Codanics" target="_blank">
-  <img src="https://img.shields.io/badge/▶️_Subscribe_to_Codanics-FF0000?style=for-the-badge&logo=youtube&logoColor=white&labelColor=8B0000" 
-       height="45"
-       onmouseover="this.style.transform='scale(1.05)'; this.style.transition='0.3s'"
-       onmouseout="this.style.transform='scale(1)'"
-       style="text-decoration: none; cursor: pointer;"/>
-</a>
-
-<br>
-
-<!-- ============================================ -->
-<!-- SNAKE ANIMATION -->
-<!-- ============================================ -->
-<img src="https://raw.githubusercontent.com/Platane/snk/output/github-contribution-grid-snake.svg" width="100%" style="max-width: 600px;"/>
-
-</div>
-"""
-# Render the footer using components.v1.html for full CSS support
-html(footer_html, height=800, scrolling=False)
+# ── Footer ────────────────────────────────────
+st.markdown(
+    '<p style="text-align:center;color:#c0c8d4;font-size:0.75rem;margin-top:2.5rem;">'
+    'Built by <a href="https://github.com/tosif7727" style="color:#3b82f6;text-decoration:none;">Touseef Afridi</a>'
+    ' · Mentored by <a href="https://www.youtube.com/c/Codanics" style="color:#7c3aed;text-decoration:none;">Dr. Ammar Tufail @ Codanics</a>'
+    '</p>',
+    unsafe_allow_html=True,
+)
